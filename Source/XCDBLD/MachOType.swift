@@ -6,6 +6,9 @@ public enum MachOType: String {
 	/// Executable binary.
 	case executable = "mh_executable"
 
+	/// Executable binary.
+	case execute = "mh_execute"
+
 	/// Bundle binary.
 	case bundle = "mh_bundle"
 

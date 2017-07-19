@@ -173,6 +173,9 @@ internal enum FrameworkType {
 		case (.framework, .dylib):
 			self = .dynamic
 
+		case (.applicationExtension, _):
+			self = .dynamic
+
 		case (.framework, .staticlib):
 			self = .static
 
@@ -186,6 +189,9 @@ internal enum FrameworkType {
 private enum PackageType: String {
 	/// A .framework package.
 	case framework = "FMWK"
+
+	/// A .XPC package
+	case xpc = "XPC!"
 
 	/// A .bundle package. Some frameworks might have this package type code
 	/// (e.g. https://github.com/ResearchKit/ResearchKit/blob/1.3.0/ResearchKit/Info.plist#L15-L16).
@@ -635,19 +641,22 @@ private func build(sdk: SDK, with buildArgs: BuildArguments, in workingDirectory
 /// Creates a dSYM for the provided dynamic framework.
 public func createDebugInformation(_ builtProductURL: URL) -> SignalProducer<TaskEvent<URL>, CarthageError> {
 	let dSYMURL = builtProductURL.appendingPathExtension("dSYM")
-
-	let executableName = builtProductURL.deletingPathExtension().lastPathComponent
-	if !executableName.isEmpty {
-		let executable = builtProductURL.appendingPathComponent(executableName).path
-		let dSYM = dSYMURL.path
-		let dsymutilTask = Task("/usr/bin/xcrun", arguments: ["dsymutil", executable, "-o", dSYM])
-
-		return dsymutilTask.launch()
-			.mapError(CarthageError.taskError)
-			.flatMapTaskEvents(.concat) { _ in SignalProducer(value: dSYMURL) }
-	} else {
+	
+	guard case .success(let binaryName) = binaryURL(builtProductURL) else {
 		return .empty
 	}
+	
+	let executable = binaryName.path
+	guard !executable.isEmpty else {
+		return .empty
+	}
+	
+	let dSYM = dSYMURL.path
+	let dsymutilTask = Task("/usr/bin/xcrun", arguments: ["dsymutil", executable, "-o", dSYM])
+
+	return dsymutilTask.launch()
+		.mapError(CarthageError.taskError)
+		.flatMapTaskEvents(.concat) { _ in SignalProducer(value: dSYMURL) }
 }
 
 /// A producer representing a scheme to be built.
@@ -1185,6 +1194,18 @@ private func binaryURL(_ packageURL: URL) -> Result<URL, CarthageError> {
 	case .framework?, .bundle?:
 		if let binaryName = bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String {
 			return .success(packageURL.appendingPathComponent(binaryName))
+		}
+
+	case .xpc?:
+		if let binaryName = bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String,
+		   let supportedPlatforms = bundle?.object(forInfoDictionaryKey: "CFBundleSupportedPlatforms") as? Array<String> {
+			if supportedPlatforms.contains("MacOSX") {
+				let binaryURL = packageURL.appendingPathComponent("Contents/MacOS/\(binaryName)")
+				return .success(binaryURL)
+			}
+			else {
+				return .success(packageURL.appendingPathComponent(binaryName))
+			}
 		}
 
 	case .dSYM?:

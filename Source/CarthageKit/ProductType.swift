@@ -5,6 +5,9 @@ public enum ProductType: String {
 	/// A framework bundle.
 	case framework = "com.apple.product-type.framework"
 
+	/// An application extension (appex) bundle.
+	case applicationExtension = "com.apple.product-type.app-extension"
+
 	/// A static library.
 	case staticLibrary = "com.apple.product-type.library.static"
 
@@ -15,5 +18,5 @@ public enum ProductType: String {
 	/// `xcodebuild`.
 	public static func from(string: String) -> Result<ProductType, CarthageError> {
 		return Result(self.init(rawValue: string), failWith: .parseError(description: "unexpected product type \"\(string)\""))
-	}
+	}	
 }
